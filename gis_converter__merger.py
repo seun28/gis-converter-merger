@@ -1,4 +1,4 @@
-# Import required libraries
+# GeoConverter - A tool for converting and merging geospatial file formats
 import streamlit as st  # For creating web interface
 import geopandas as gpd  # For handling geospatial data
 import pandas as pd  # For data manipulation
@@ -54,14 +54,17 @@ def merge_files(files, input_formats, output_format):
     merged_gdf = pd.concat(gdfs, ignore_index=True)
     return merged_gdf
 
-def save_output(gdf, output_format, original_filename):
+def save_output(gdf, output_format, original_filename, is_converter=False):
     """
     Save the merged GeoDataFrame in the specified output format
     Args:
         gdf: GeoDataFrame to save
         output_format: Desired output format
         original_filename: Base name for the output file
+        is_converter: Boolean to indicate if this is converter page (vs merger page)
     """
+    button_prefix = "" if is_converter else "Merged "
+    
     if output_format == "Shapefile":
         # Save as shapefile (requires creating zip with all component files)
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -73,42 +76,49 @@ def save_output(gdf, output_format, original_filename):
                     zipf.write(file, file.name)
             with open(zip_path, "rb") as f:
                 st.download_button(
-                    "Download Merged Shapefile (ZIP)",
+                    f"Download {button_prefix}Shapefile (ZIP)",
                     f,
                     file_name=f"{original_filename}.zip",
+                    mime="application/zip"
                 )
     elif output_format == "KML":
         # Save as KML file
-        gdf.to_file(f"{original_filename}.kml", driver="KML")
-        with open(f"{original_filename}.kml", "rb") as f:
-            st.download_button(
-                "Download Merged KML", 
-                f, 
-                file_name=f"{original_filename}.kml"
-            )
+        with tempfile.NamedTemporaryFile(suffix='.kml', delete=False) as tmp_file:
+            gdf.to_file(tmp_file.name, driver="KML")
+            with open(tmp_file.name, "rb") as f:
+                st.download_button(
+                    f"Download {button_prefix}KML", 
+                    f, 
+                    file_name=f"{original_filename}.kml",
+                    mime="application/vnd.google-earth.kml+xml"
+                )
+            os.unlink(tmp_file.name)
     elif output_format == "GeoJSON":
         # Save as GeoJSON file
         st.download_button(
-            "Download Merged GeoJSON",
+            f"Download {button_prefix}GeoJSON",
             gdf.to_json(),
             file_name=f"{original_filename}.geojson",
+            mime="application/geo+json"
         )
     else:  # CSV format
         # Save as CSV file
         st.download_button(
-            "Download Merged CSV",
+            f"Download {button_prefix}CSV",
             gdf.to_csv(index=False),
             file_name=f"{original_filename}.csv",
+            mime="text/csv"
         )
 
 def main():
     """Main function to run the Streamlit application"""
-    st.title("Geospatial File Format Converter & Merger")
+    st.title("GeoConverter & GeoMerger ")
     
     # Create sidebar navigation
     page = st.sidebar.selectbox("Select Page", ["Format Converter", "Format Merger"])
     
     if page == "Format Converter":
+        st.title("GeoConverter Page")
         st.write("Convert between different geospatial file formats")
 
         # Input format selection dropdown
@@ -162,12 +172,13 @@ def main():
                         return
 
                 # Save the file in the selected output format
-                save_output(gdf, output_format, original_filename)
+                save_output(gdf, output_format, original_filename, is_converter=True)
 
             except Exception as e:
                 st.error(f"Error processing file: {str(e)}")
 
     else:  # Format Merger page
+        st.title("GeoMerger Page")
         st.write("Merge multiple geospatial files")
         
         # Get number of files to merge
@@ -234,7 +245,7 @@ def main():
         if all(files):  # Only proceed if all files are uploaded
             merged_gdf = merge_files(files, formats, output_format)
             if merged_gdf is not None:
-                save_output(merged_gdf, output_format, "merged_file")
+                save_output(merged_gdf, output_format, "merged_file", is_converter=False)
 
 if __name__ == "__main__":
     main()
